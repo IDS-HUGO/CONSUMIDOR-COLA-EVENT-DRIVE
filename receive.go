@@ -1,91 +1,42 @@
 package main
 
 import (
-	"bytes"
-	"log"
-	"net/http"
-	"os"
+    "fmt"
+    "log"
+    "os"
 
-	"github.com/joho/godotenv"
-	amqp "github.com/rabbitmq/amqp091-go"
+    MQTT "github.com/eclipse/paho.mqtt.golang"
+    "github.com/joho/godotenv"
 )
 
-func failOnError(err error, msg string) {
-	if err != nil {
-		log.Panicf("%s: %s", msg, err)
-	}
-}
-
-func sendToAPI(message string) {
-	apiURL := os.Getenv("API_URL")
-	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer([]byte(message)))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Error sending message to API: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	log.Printf("Message sent to API: %s", message)
+func messageHandler(client MQTT.Client, msg MQTT.Message) {
+    log.Printf("Received message: %s from topic: %s", msg.Payload(), msg.Topic())
 }
 
 func main() {
-	// Cargar variables de entorno
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("No se pudo cargar el archivo .env, usando variables del sistema")
-	}
+    err := godotenv.Load()
+    if err != nil {
+        log.Println("No se pudo cargar el archivo .env, usando variables del sistema")
+    }
 
-	rabbitURL := os.Getenv("RABBITMQ_URL")
-	queueName := os.Getenv("RABBITMQ_QUEUE_IN")
+    broker := os.Getenv("RABBITMQ_URL")
+    topic := os.Getenv("RABBITMQ_QUEUE_IN")
 
-	// Conectar a RabbitMQ
-	conn, err := amqp.Dial(rabbitURL)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
+    opts := MQTT.NewClientOptions()
+    opts.AddBroker(broker)
+    opts.SetClientID("COLAEVENTDRIVE")
+    opts.SetDefaultPublishHandler(messageHandler)
 
-	// Crear un canal
-	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer ch.Close()
+    client := MQTT.NewClient(opts)
+    if token := client.Connect(); token.Wait() && token.Error() != nil {
+        log.Fatalf("Failed to connect to MQTT broker: %v", token.Error())
+    }
+    defer client.Disconnect(250)
 
-	// Declarar la cola
-	q, err := ch.QueueDeclare(
-		queueName,
-		false,
-		false,
-		false,
-		false,
-		nil,
-	)
-	failOnError(err, "Failed to declare a queue")
+    if token := client.Subscribe(topic, 1, messageHandler); token.Wait() && token.Error() != nil {
+        log.Fatalf("Failed to subscribe to topic: %v", token.Error())
+    }
 
-	// Consumir mensajes de la cola
-	msgs, err := ch.Consume(
-		q.Name,
-		"COLAEVENTDRIVE",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	failOnError(err, "Failed to register a consumer")
-
-	// Canal para mantener la ejecución
-	var forever chan struct{}
-
-	// Goroutine para procesar mensajes
-	go func() {
-		for d := range msgs {
-			log.Printf("Received message: %s", d.Body)
-			sendToAPI(string(d.Body))
-		}
-	}()
-
-	log.Println(" [*] Waiting for messages. To exit press CTRL+C")
-	<-forever
+    fmt.Println(" [*] Waiting for messages. To exit press CTRL+C")
+    select {}
 }
