@@ -11,9 +11,10 @@ import (
 )
 
 func sendToAPI(message string) {
+
 	apiURL := os.Getenv("API_URL")
 	if apiURL == "" {
-		log.Println("❌ API_URL no está configurada en el .env")
+		log.Println("❌ ERROR: API_URL no está configurada en el .env")
 		return
 	}
 
@@ -29,13 +30,14 @@ func sendToAPI(message string) {
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
+
 	if err != nil {
-		log.Printf("❌ Error enviando mensaje a la API: %v", err)
+		log.Printf("❌ ADVERTENCIA: Error enviando mensaje a la API: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	log.Printf("✅ Mensaje enviado a la API con éxito: %s", message)
+	log.Printf("✅ BIEN: Mensaje enviado a la API con éxito: %s", message)
 }
 
 func messageHandler(client MQTT.Client, msg MQTT.Message) {
