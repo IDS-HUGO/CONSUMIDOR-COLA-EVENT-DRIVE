@@ -1,42 +1,86 @@
 package main
 
 import (
-    "fmt"
-    "log"
-    "os"
+	"bytes"
+	"log"
+	"net/http"
+	"os"
 
-    MQTT "github.com/eclipse/paho.mqtt.golang"
-    "github.com/joho/godotenv"
+	MQTT "github.com/eclipse/paho.mqtt.golang"
+	"github.com/joho/godotenv"
 )
 
+// Función para enviar datos a la API
+func sendToAPI(message string) {
+	apiURL := os.Getenv("API_URL")
+	if apiURL == "" {
+		log.Println("❌ API_URL no está configurada en el .env")
+		return
+	}
+
+	if message == "" {
+		log.Println("⚠️ Mensaje vacío, no se enviará a la API")
+		return
+	}
+
+	log.Printf("📤 Enviando mensaje a la API: %s", message)
+
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer([]byte(message)))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("❌ Error enviando mensaje a la API: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	log.Printf("✅ Mensaje enviado a la API con éxito: %s", message)
+}
+
+// Función para manejar los mensajes recibidos
 func messageHandler(client MQTT.Client, msg MQTT.Message) {
-    log.Printf("Received message: %s from topic: %s", msg.Payload(), msg.Topic())
+	payload := string(msg.Payload())
+
+	log.Printf("📩 Mensaje recibido: '%s' desde el tópico: '%s'", payload, msg.Topic())
+
+	if payload == "" {
+		log.Println("⚠️ Advertencia: Se recibió un mensaje vacío desde MQTT")
+		return
+	}
+
+	sendToAPI(payload)
 }
 
 func main() {
-    err := godotenv.Load()
-    if err != nil {
-        log.Println("No se pudo cargar el archivo .env, usando variables del sistema")
-    }
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("⚠️ No se pudo cargar el archivo .env, usando variables del sistema")
+	}
 
-    broker := os.Getenv("RABBITMQ_URL")
-    topic := os.Getenv("RABBITMQ_QUEUE_IN")
+	broker := os.Getenv("RABBITMQ_URL")
+	topic := os.Getenv("RABBITMQ_QUEUE_IN")
 
-    opts := MQTT.NewClientOptions()
-    opts.AddBroker(broker)
-    opts.SetClientID("COLAEVENTDRIVE")
-    opts.SetDefaultPublishHandler(messageHandler)
+	if broker == "" || topic == "" {
+		log.Fatal("❌ ERROR: RABBITMQ_URL o RABBITMQ_QUEUE_IN no están configurados en el .env")
+	}
 
-    client := MQTT.NewClient(opts)
-    if token := client.Connect(); token.Wait() && token.Error() != nil {
-        log.Fatalf("Failed to connect to MQTT broker: %v", token.Error())
-    }
-    defer client.Disconnect(250)
+	opts := MQTT.NewClientOptions()
+	opts.AddBroker(broker)
+	opts.SetClientID("COLAEVENTDRIVE")
+	opts.SetDefaultPublishHandler(messageHandler)
 
-    if token := client.Subscribe(topic, 1, messageHandler); token.Wait() && token.Error() != nil {
-        log.Fatalf("Failed to subscribe to topic: %v", token.Error())
-    }
+	client := MQTT.NewClient(opts)
+	if token := client.Connect(); token.Wait() && token.Error() != nil {
+		log.Fatalf("❌ Error al conectar con el broker MQTT: %v", token.Error())
+	}
+	defer client.Disconnect(250)
 
-    fmt.Println(" [*] Waiting for messages. To exit press CTRL+C")
-    select {}
+	if token := client.Subscribe(topic, 1, messageHandler); token.Wait() && token.Error() != nil {
+		log.Fatalf("❌ Error al suscribirse al tópico: %v", token.Error())
+	}
+
+	log.Println(" [*] ✅ Esperando mensajes en MQTT. Presiona CTRL+C para salir.")
+	select {}
 }
