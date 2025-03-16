@@ -10,7 +10,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Función para enviar datos a la API
 func sendToAPI(message string) {
 	apiURL := os.Getenv("API_URL")
 	if apiURL == "" {
@@ -39,7 +38,6 @@ func sendToAPI(message string) {
 	log.Printf("✅ Mensaje enviado a la API con éxito: %s", message)
 }
 
-// Función para manejar los mensajes recibidos
 func messageHandler(client MQTT.Client, msg MQTT.Message) {
 	payload := string(msg.Payload())
 
