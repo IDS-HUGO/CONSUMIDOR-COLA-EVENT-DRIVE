@@ -33,8 +33,10 @@ func sendToAPI(message string) {
 
 	if err != nil {
 		log.Printf("❌ ADVERTENCIA: Error enviando mensaje a la API: %v", err)
+		log.Printf("🔁 Reintentando enviar mensaje a la API: %s", message)
 		return
 	}
+
 	defer resp.Body.Close()
 
 	log.Printf("✅ BIEN: Mensaje enviado a la API con éxito: %s", message)
